@@ -50,7 +50,7 @@ void makeGeometry()
     gGeoManager -> SetVisLevel(10);
     //top -> Draw("ogl");
 
-    auto outfile = new TFile("siGeomtry.root","RECREATE");
+    auto outfile = new TFile("detectorGeometry.root","RECREATE");
     gGeoManager -> Write();
     outfile -> Close();
 }

@@ -1,23 +1,31 @@
-CMAKE_MINIMUM_REQUIRED(VERSION 3.10)
-PROJECT(SITRACKING)
+cmake_minimum_required(VERSION 3.10)
+project(SITRACKING)
 
-FIND_PACKAGE(ROOT REQUIRED COMPONENTS Geom)
-INCLUDE(${ROOT_USE_FILE})
+find_package(ROOT REQUIRED COMPONENTS Geom)
+include(${ROOT_USE_FILE})
 
-SET(GENFIT_ROOT "$ENV{GENFIT}")
-FIND_PATH(GENFIT_INCLUDE_DIR Track.h PATHS ${GENFIT_ROOT}/include NO_DEFAULT_PATH)
-FIND_LIBRARY(GENFIT_LIB genfit2 PATHS ${GENFIT_ROOT}/lib NO_DEFAULT_PATH)
-MESSAGE(STATUS "GENFIT_ROOT: ${GENFIT_ROOT}")
-MESSAGE(STATUS "GENFIT_INCLUDE_DIR: ${GENFIT_INCLUDE_DIR}")
-MESSAGE(STATUS "GENFIT_LIB: ${GENFIT_LIB}")
+set(GENFIT_ROOT "$ENV{GENFIT}")
+find_path(GENFIT_INCLUDE_DIR Track.h PATHS ${GENFIT_ROOT}/include NO_DEFAULT_PATH)
+find_library(GENFIT_LIB genfit2 PATHS ${GENFIT_ROOT}/lib NO_DEFAULT_PATH)
+message(STATUS "GENFIT_ROOT: ${GENFIT_ROOT}")
+message(STATUS "GENFIT_INCLUDE_DIR: ${GENFIT_INCLUDE_DIR}")
+message(STATUS "GENFIT_LIB: ${GENFIT_LIB}")
 
-FOREACH(program
+foreach(program
         minimalFittingExample
         measurementFactoryExample
-        siTrackingConstField
+        siTracking
     )
-    MESSAGE(STATUS ${program})
-    ADD_EXECUTABLE(${program} ${program}.cc)
-    TARGET_INCLUDE_DIRECTORIES(${program} PRIVATE ${GENFIT_INCLUDE_DIR})
-    TARGET_LINK_LIBRARIES(${program} ${ROOT_LIBRARIES} ${GENFIT_LIB} ROOT::Core ROOT::Physics ROOT::Eve)
+    message(STATUS ${program})
+    add_executable(${program} ${program}.cc source/MyField.cc)
+    target_include_directories(${program} PRIVATE ${GENFIT_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/source)
+    target_link_libraries(${program} ${ROOT_LIBRARIES} ${GENFIT_LIB} ROOT::Core ROOT::Physics ROOT::Eve)
 ENDFOREACH(program)
+
+set(COPY_FILE_LIST)
+file(GLOB COPY_FILE_LIST "${CMAKE_SOURCE_DIR}/fieldMap.root" "${CMAKE_SOURCE_DIR}/detectorGeometry.root")
+foreach(copy_file ${COPY_FILE_LIST})
+    message(STATUS "copying ${copy_file}")
+    get_filename_component(just_name ${copy_file} NAME)
+    configure_file(${copy_file} ${CMAKE_BINARY_DIR}/${just_name} COPYONLY)
+endforeach()
