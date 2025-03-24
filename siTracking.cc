@@ -32,20 +32,21 @@ using namespace std;
 
 int main()
 {
-    gRandom -> SetSeed(14);
+    gRandom -> SetSeed(time(0));
 
+    // initial parameters for analysis
     bool useFieldMap = false;
     bool useDisplay = true;
     int numberOfEvents = 1;
     double zSpacing = 1.0; // space between layers (cm)
     unsigned int nMeasurements = 10;
-    const int pdg = 11; // particle pdg code
+    const int pdg = 11; // e- pdg code (-11 for positron)
     const double charge = TDatabasePDG::Instance()->GetParticle(pdg)->Charge()/(3.);
-    TVector3 pos0(0,0,0); // position where user want's to know the momentum
+    TVector3 posReco(0,0,0); // position where user want's to know the momentum
+    TVector3 posHelix(0,0,0); // initial trial of helix position
+    TVector3 momHelix(0,0.5,0.5); // initial trial of helix momentum
 
-    // init MeasurementCreator
-    //genfit::MeasurementCreator measurementCreator;
-
+    /////////////////////////////////////////////////////////////////////////////////////
     // init geometry and mag. field
     new TGeoManager("Geometry", "Geane geometry");
     TGeoManager::Import("detectorGeometry.root");
@@ -53,53 +54,42 @@ int main()
     else genfit::FieldManager::getInstance()->init(new genfit::ConstField(0.,0.,15.)); // 15 kGauss
     genfit::MaterialEffects::getInstance() -> init(new genfit::TGeoMaterialInterface());
 
-    //cout << "+" << __LINE__ << " " << __FILE__ << endl;
-
+    /////////////////////////////////////////////////////////////////////////////////////
     // init event display
     genfit::EventDisplay* display = nullptr;
     if (useDisplay)
         display = genfit::EventDisplay::getInstance();
 
-    // init fitter
+    /////////////////////////////////////////////////////////////////////////////////////
+    // init fitter and init the factory
     genfit::AbsKalmanFitter* fitter = new genfit::KalmanFitterRefTrack();
     auto myDetectorHitArray = new TClonesArray("genfit::mySpacepointDetectorHit");
-
-    // init the factory
     genfit::MeasurementFactory<genfit::AbsMeasurement> factory;
     auto myProducer = new genfit::MeasurementProducer<genfit::mySpacepointDetectorHit,genfit::mySpacepointMeasurement>(myDetectorHitArray);
     int myDetId = 1;
     factory.addProducer(myDetId, myProducer);
 
-    // main loop
+    /////////////////////////////////////////////////////////////////////////////////////
+    // every event, make point and do fitting
     for (unsigned int iEvent=0; iEvent<numberOfEvents; ++iEvent)
     {
         myDetectorHitArray -> Clear();
 
-        //TrackCand
         genfit::TrackCand trackCandidate;
+        genfit::HelixTrackModel* helix = new genfit::HelixTrackModel(posHelix, mom, charge);
 
-        // true start values
-        TVector3 pos(0,0,0);
-        TVector3 mom(0,0.5,0.5);
-        cout << "+" << __LINE__ << " " << __FILE__ << endl;
-        mom.Print();
-
-        cout << "+" << __LINE__ << " " << __FILE__ << endl;
-        // helix track model
-        genfit::HelixTrackModel* helix = new genfit::HelixTrackModel(pos, mom, charge);
-        //measurementCreator.setTrackModel(helix);
-
-        cout << "+" << __LINE__ << " " << __FILE__ << endl;
-        double resolution = 1;
         // covariance
+        double resolution = 1;
         TMatrixDSym cov(3);
         for (int i = 0; i < 3; ++i)
             cov(i,i) = resolution*resolution;
-        cout << "+" << __LINE__ << " " << __FILE__ << endl;
 
+        /////////////////////////////////////////////////////////////////////////////////////
+        // TODO Put simulation data points here
+        /////////////////////////////////////////////////////////////////////////////////////
+        // make measurement point
         for (unsigned int i=0; i<nMeasurements; ++i)
         {
-            // "simulate" the detector
             double trackLength = i*zSpacing;
             TVector3 currentPos = helix -> getPos(trackLength);
             cout << "+" << __LINE__ << " " << __FILE__ << " # l/position = " << trackLength << " / " << currentPos.X() << ", " << currentPos.Y() << ", " << currentPos.Z() << endl;
@@ -113,28 +103,25 @@ int main()
             new((*myDetectorHitArray)[i]) genfit::mySpacepointDetectorHit(currentPos, cov);
             trackCandidate.addHit(myDetId, i);
         }
-
-        // smeared start values (would come from the pattern recognition)
-        const bool smearPosMom = true;   // init the Reps with smeared pos and mom
-        const double posSmear = 0.1;     // cm
-        const double momSmear = 3. /180.*TMath::Pi();     // rad
-        const double momMagSmear = 0.1;   // relative
-
-        TVector3 posM(0,0,0);
-        TVector3 momM(mom);
+        /////////////////////////////////////////////////////////////////////////////////////
+        /////////////////////////////////////////////////////////////////////////////////////
+        /////////////////////////////////////////////////////////////////////////////////////
 
         // approximate covariance initial guess for cov
-        TMatrixDSym covM(6);
-        for (int i = 0; i < 3; ++i) covM(i,i) = resolution*resolution;
-        for (int i = 3; i < 6; ++i) covM(i,i) = pow(resolution / nMeasurements / sqrt(3), 2);
+        TMatrixDSym covInit(6);
+        for (int i = 0; i < 3; ++i) covInit(i,i) = resolution*resolution;
+        for (int i = 3; i < 6; ++i) covInit(i,i) = pow(resolution / nMeasurements / sqrt(3), 2);
 
         // set start values and pdg to cand
-        trackCandidate.setPosMomSeedAndPdgCode(posM, momM, pdg);
-        trackCandidate.setCovSeed(covM);
+        TVector3 posInit(0,0,0);
+        TVector3 momInit(momHelix);
+        trackCandidate.setPosMomSeedAndPdgCode(posInit, momInit, pdg);
+        trackCandidate.setCovSeed(covInit);
 
         // create track
         auto fitTrack = new genfit::Track(trackCandidate, factory, new genfit::RKTrackRep(pdg));
 
+        /////////////////////////////////////////////////////////////////////////////////////
         // do the fit
         try{
             fitter -> processTrack(fitTrack);
@@ -168,9 +155,12 @@ int main()
                 display->addEvent(fitTrack);
             }
     }
+    /////////////////////////////////////////////////////////////////////////////////////
 
     delete fitter;
 
+    /////////////////////////////////////////////////////////////////////////////////////
+    // set detector geomtry and draw
     if (useDisplay) {
         TGeoNode* geoNode = gGeoManager -> GetTopNode();
         TEveGeoTopNode* topNode = new TEveGeoTopNode(gGeoManager, geoNode, 1, 3, 1000);
